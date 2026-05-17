@@ -10,7 +10,7 @@ export default async function handler(req, res) {
   const { stock, date } = req.body;
   if (!stock || !date) return res.status(400).json({ error: "Missing stock or date" });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "API key not configured" });
 
   const prompt = `You are a SEBI-aware Indian intraday trading expert. Today's date: ${date}.
@@ -42,31 +42,32 @@ Respond ONLY with a valid JSON object, no markdown, no backticks:
 }`;
 
   try {
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "llama-3.3-70b-versatile",
         max_tokens: 1000,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          {
+            role: "system",
+            content: "You are a SEBI-aware Indian intraday trading expert. Always respond with valid JSON only — no markdown, no backticks, no extra text.",
+          },
+          { role: "user", content: prompt }
+        ],
       }),
     });
 
-    const data = await anthropicRes.json();
+    const data = await groqRes.json();
 
-    if (!anthropicRes.ok) {
-      return res.status(anthropicRes.status).json({ error: data.error?.message || "Anthropic API error" });
+    if (!groqRes.ok) {
+      return res.status(groqRes.status).json({ error: data.error?.message || "Groq API error" });
     }
 
-    const text = data.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+    const text = data.choices[0].message.content;
 
     const clean = text.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(clean);
